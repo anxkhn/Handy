@@ -64,7 +64,9 @@ chrono = "0.4"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 tar = "0.4.44"
 flate2 = "1.0"
-transcribe-rs = "0.1.4"
+zip = "2.2"
+
+transcribe-rs = { git = "https://github.com/anxkhn/transcribe-rs" }
 cpvc = "0.4.1"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

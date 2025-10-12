@@ -170,7 +170,7 @@ const ModelDropdown: React.FC<ModelDropdownProps> = ({
                   <div>
                     <div className="text-sm">
                       {model.name}
-                      {model.id === "small" && isFirstRun && (
+                      {model.id === "tiny" && isFirstRun && (
                         <span className="ml-2 text-xs bg-logo-primary/20 text-logo-primary px-1.5 py-0.5 rounded">
                           Recommended
                         </span>

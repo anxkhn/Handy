@@ -10,7 +10,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tar::Archive;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{App, AppHandle, Emitter, Manager};
+use zip::ZipArchive;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EngineType {
@@ -25,6 +26,7 @@ pub struct ModelInfo {
     pub description: String,
     pub filename: String,
     pub url: Option<String>,
+    pub coreml_encoder_url: Option<String>,
     pub size_mb: u64,
     pub is_downloaded: bool,
     pub is_downloading: bool,
@@ -50,9 +52,10 @@ pub struct ModelManager {
 }
 
 impl ModelManager {
-    pub fn new(app_handle: &AppHandle) -> Result<Self> {
-        // Create models directory in app data
-        let models_dir = app_handle
+    pub fn new(app: &App) -> Result<Self> {
+        let app_handle = app.app_handle().clone();
+
+        let models_dir = app
             .path()
             .app_data_dir()
             .map_err(|e| anyhow::anyhow!("Failed to get app data dir: {}", e))?
@@ -66,14 +69,15 @@ impl ModelManager {
 
         // TODO this should be read from a JSON file or something..
         available_models.insert(
-            "small".to_string(),
+            "tiny".to_string(),
             ModelInfo {
-                id: "small".to_string(),
-                name: "Whisper Small".to_string(),
-                description: "Fast and fairly accurate.".to_string(),
-                filename: "ggml-small.bin".to_string(),
-                url: Some("https://blob.handy.computer/ggml-small.bin".to_string()),
-                size_mb: 487,
+                id: "tiny".to_string(),
+                name: "Whisper Tiny (English)".to_string(),
+                description: "Very fast, tiny model. Relative speed: 10x, lower accuracy.".to_string(),
+                filename: "ggml-tiny.en.bin".to_string(),
+                url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin".to_string()),
+                coreml_encoder_url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-encoder.mlmodelc.zip".to_string()),
+                size_mb: 75,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -83,17 +87,57 @@ impl ModelManager {
                 speed_score: 0.85,
             },
         );
-
-        // Add downloadable models
+        
+        available_models.insert(
+            "base".to_string(),
+            ModelInfo {
+                id: "base".to_string(),
+                name: "Whisper Base (English)".to_string(),
+                description: "Fast model. Relative speed: 7x, moderate accuracy.".to_string(),
+                filename: "ggml-base.en.bin".to_string(),
+                url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin".to_string()),
+                coreml_encoder_url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-encoder.mlmodelc.zip".to_string()),
+                size_mb: 142,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::Whisper,
+                accuracy_score: 0.65,
+                speed_score: 0.80,
+            },
+        );
+        
+        available_models.insert(
+            "small".to_string(),
+            ModelInfo {
+                id: "small".to_string(),
+                name: "Whisper Small (English)".to_string(),
+                description: "Balanced speed and accuracy. Relative speed: 4x.".to_string(),
+                filename: "ggml-small.en.bin".to_string(),
+                url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin".to_string()),
+                coreml_encoder_url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-encoder.mlmodelc.zip".to_string()),
+                size_mb: 466,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::Whisper,
+                accuracy_score: 0.70,
+                speed_score: 0.70,
+            },
+        );
+        
         available_models.insert(
             "medium".to_string(),
             ModelInfo {
                 id: "medium".to_string(),
-                name: "Whisper Medium".to_string(),
-                description: "Good accuracy, medium speed".to_string(),
-                filename: "whisper-medium-q4_1.bin".to_string(),
-                url: Some("https://blob.handy.computer/whisper-medium-q4_1.bin".to_string()),
-                size_mb: 492, // Approximate size
+                name: "Whisper Medium (English)".to_string(),
+                description: "High accuracy, medium speed. Relative speed: 2x.".to_string(),
+                filename: "ggml-medium.en.bin".to_string(),
+                url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin".to_string()),
+                coreml_encoder_url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en-encoder.mlmodelc.zip".to_string()),
+                size_mb: 1536,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -103,74 +147,18 @@ impl ModelManager {
                 speed_score: 0.60,
             },
         );
-
-        available_models.insert(
-            "turbo".to_string(),
-            ModelInfo {
-                id: "turbo".to_string(),
-                name: "Whisper Turbo".to_string(),
-                description: "Balanced accuracy and speed.".to_string(),
-                filename: "ggml-large-v3-turbo.bin".to_string(),
-                url: Some("https://blob.handy.computer/ggml-large-v3-turbo.bin".to_string()),
-                size_mb: 1600, // Approximate size
-                is_downloaded: false,
-                is_downloading: false,
-                partial_size: 0,
-                is_directory: false,
-                engine_type: EngineType::Whisper,
-                accuracy_score: 0.80,
-                speed_score: 0.40,
-            },
-        );
-
-        available_models.insert(
-            "large".to_string(),
-            ModelInfo {
-                id: "large".to_string(),
-                name: "Whisper Large".to_string(),
-                description: "Good accuracy, but slow.".to_string(),
-                filename: "ggml-large-v3-q5_0.bin".to_string(),
-                url: Some("https://blob.handy.computer/ggml-large-v3-q5_0.bin".to_string()),
-                size_mb: 1100, // Approximate size
-                is_downloaded: false,
-                is_downloading: false,
-                partial_size: 0,
-                is_directory: false,
-                engine_type: EngineType::Whisper,
-                accuracy_score: 0.85,
-                speed_score: 0.30,
-            },
-        );
-
-        // Add NVIDIA Parakeet models (directory-based)
-        available_models.insert(
-            "parakeet-tdt-0.6b-v2".to_string(),
-            ModelInfo {
-                id: "parakeet-tdt-0.6b-v2".to_string(),
-                name: "Parakeet V2".to_string(),
-                description: "English only. The best model for English speakers.".to_string(),
-                filename: "parakeet-tdt-0.6b-v2-int8".to_string(), // Directory name
-                url: Some("https://blob.handy.computer/parakeet-v2-int8.tar.gz".to_string()),
-                size_mb: 473, // Approximate size for int8 quantized model
-                is_downloaded: false,
-                is_downloading: false,
-                partial_size: 0,
-                is_directory: true,
-                engine_type: EngineType::Parakeet,
-                accuracy_score: 0.85,
-                speed_score: 0.85,
-            },
-        );
-
+        
+        // Add NVIDIA Parakeet model (directory-based)
         available_models.insert(
             "parakeet-tdt-0.6b-v3".to_string(),
             ModelInfo {
                 id: "parakeet-tdt-0.6b-v3".to_string(),
                 name: "Parakeet V3".to_string(),
                 description: "Fast and accurate".to_string(),
-                filename: "parakeet-tdt-0.6b-v3-int8".to_string(), // Directory name
+                filename: "parakeet-tdt-0.6b-v3-int8".to_string(),
                 url: Some("https://blob.handy.computer/parakeet-v3-int8.tar.gz".to_string()),
-                size_mb: 478, // Approximate size for int8 quantized model
+                coreml_encoder_url: None, // Parakeet doesn't use Core ML
+                size_mb: 850,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -201,7 +189,30 @@ impl ModelManager {
 
     pub fn get_available_models(&self) -> Vec<ModelInfo> {
         let models = self.available_models.lock().unwrap();
-        models.values().cloned().collect()
+
+        let desired_order = vec![
+            "tiny".to_string(),
+            "base".to_string(),
+            "small".to_string(),
+            "medium".to_string(),
+            "parakeet-tdt-0.6b-v3".to_string(),
+        ];
+
+        let mut ordered_models = Vec::new();
+
+        for model_id in &desired_order {
+            if let Some(model) = models.get(model_id) {
+                ordered_models.push(model.clone());
+            }
+        }
+
+        for model in models.values() {
+            if !desired_order.contains(&model.id) {
+                ordered_models.push(model.clone());
+            }
+        }
+
+        ordered_models
     }
 
     pub fn get_model_info(&self, model_id: &str) -> Option<ModelInfo> {
@@ -211,7 +222,7 @@ impl ModelManager {
 
     fn migrate_bundled_models(&self) -> Result<()> {
         // Check for bundled models and copy them to user directory
-        let bundled_models = ["ggml-small.bin"]; // Add other bundled models here if any
+        let bundled_models = ["ggml-tiny.en.bin"]; 
 
         for filename in &bundled_models {
             let bundled_path = self.app_handle.path().resolve(
@@ -257,14 +268,12 @@ impl ModelManager {
                 model.is_downloaded = model_path.exists() && model_path.is_dir();
                 model.is_downloading = partial_path.exists();
 
-                // Get partial file size if it exists (for the .tar.gz being downloaded)
                 if partial_path.exists() {
                     model.partial_size = partial_path.metadata().map(|m| m.len()).unwrap_or(0);
                 } else {
                     model.partial_size = 0;
                 }
             } else {
-                // For file-based models (existing logic)
                 let model_path = self.models_dir.join(&model.filename);
                 let partial_path = self.models_dir.join(format!("{}.partial", &model.filename));
 
@@ -309,6 +318,104 @@ impl ModelManager {
         Ok(())
     }
 
+    async fn download_and_extract_coreml_encoder(&self, model_info: &ModelInfo) -> Result<()> {
+        let coreml_url = model_info.coreml_encoder_url.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No Core ML encoder URL for model"))?;
+
+        // Create Core ML encoder filename from GGML filename
+        let base_filename = model_info.filename.strip_suffix(".bin")
+            .ok_or_else(|| anyhow::anyhow!("Invalid model filename format"))?;
+        let coreml_filename = format!("{}-encoder.mlmodelc", base_filename);
+        let coreml_zip_filename = format!("{}.zip", coreml_filename);
+
+        let coreml_partial_path = self.models_dir.join(format!("{}.partial", &coreml_zip_filename));
+        let coreml_dir_path = self.models_dir.join(&coreml_filename);
+
+        // Don't download if complete Core ML directory already exists
+        if coreml_dir_path.exists() && coreml_dir_path.is_dir() {
+            return Ok(());
+        }
+
+        // Check if we have a partial download to resume
+        let resume_from = if coreml_partial_path.exists() {
+            let size = coreml_partial_path.metadata()?.len();
+            println!("Resuming Core ML encoder download from byte {}", size);
+            size
+        } else {
+            println!("Starting fresh Core ML encoder download from {}", coreml_url);
+            0
+        };
+
+        // Create HTTP client with range request for resuming
+        let client = reqwest::Client::new();
+        let mut request = client.get(coreml_url);
+
+        if resume_from > 0 {
+            request = request.header("Range", format!("bytes={}-", resume_from));
+        }
+
+        let response = request.send().await?;
+
+        // Check for success or partial content status
+        if !response.status().is_success()
+            && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
+        {
+            return Err(anyhow::anyhow!(
+                "Failed to download Core ML encoder: HTTP {}",
+                response.status()
+            ));
+        }
+
+        let _total_size = if resume_from > 0 {
+            resume_from + response.content_length().unwrap_or(0)
+        } else {
+            response.content_length().unwrap_or(0)
+        };
+
+        let mut _downloaded = resume_from;
+        let mut stream = response.bytes_stream();
+
+        // Open file for appending if resuming, or create new if starting fresh
+        let mut file = if resume_from > 0 {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&coreml_partial_path)?
+        } else {
+            std::fs::File::create(&coreml_partial_path)?
+        };
+
+        // Download with progress
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            file.write_all(&chunk)?;
+            _downloaded += chunk.len() as u64;
+        }
+
+        file.flush()?;
+        drop(file);
+
+        // Extract the ZIP file
+        println!("Extracting Core ML encoder ZIP file: {}", coreml_zip_filename);
+
+        let zip_file = File::open(&coreml_partial_path)?;
+        let mut zip_archive = ZipArchive::new(zip_file)?;
+
+        // Clean up any existing directory
+        if coreml_dir_path.exists() {
+            fs::remove_dir_all(&coreml_dir_path)?;
+        }
+
+        // Extract all files
+        zip_archive.extract(&self.models_dir)?;
+
+        // Remove the ZIP file
+        fs::remove_file(&coreml_partial_path)?;
+
+        println!("Successfully extracted Core ML encoder: {}", coreml_filename);
+        Ok(())
+    }
+
     pub async fn download_model(&self, model_id: &str) -> Result<()> {
         let model_info = {
             let models = self.available_models.lock().unwrap();
@@ -320,6 +427,7 @@ impl ModelManager {
 
         let url = model_info
             .url
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No download URL for model"))?;
         let model_path = self.models_dir.join(&model_info.filename);
         let partial_path = self
@@ -356,7 +464,7 @@ impl ModelManager {
 
         // Create HTTP client with range request for resuming
         let client = reqwest::Client::new();
-        let mut request = client.get(&url);
+        let mut request = client.get(url);
 
         if resume_from > 0 {
             request = request.header("Range", format!("bytes={}-", resume_from));
@@ -526,6 +634,20 @@ impl ModelManager {
             fs::rename(&partial_path, &model_path)?;
         }
 
+        // Download Core ML encoder if available and running on macOS
+        #[cfg(target_os = "macos")]
+        {
+            if model_info.coreml_encoder_url.is_some() {
+                println!("Downloading Core ML encoder for model: {}", model_id);
+                if let Err(e) = self.download_and_extract_coreml_encoder(&model_info).await {
+                    println!("Warning: Failed to download Core ML encoder: {}. Continuing without Core ML acceleration.", e);
+                    // Don't fail the entire download if Core ML encoder fails
+                } else {
+                    println!("Successfully downloaded Core ML encoder for model: {}", model_id);
+                }
+            }
+        }
+
         // Update download status
         {
             let mut models = self.available_models.lock().unwrap();
@@ -596,6 +718,31 @@ impl ModelManager {
             fs::remove_file(&partial_path)?;
             println!("ModelManager: Partial file deleted successfully");
             deleted_something = true;
+        }
+
+        // Delete Core ML encoder directory if it exists
+        if model_info.coreml_encoder_url.is_some() {
+            let base_filename = model_info.filename.strip_suffix(".bin")
+                .ok_or_else(|| anyhow::anyhow!("Invalid model filename format"))?;
+            let coreml_filename = format!("{}-encoder.mlmodelc", base_filename);
+            let coreml_dir_path = self.models_dir.join(&coreml_filename);
+
+            if coreml_dir_path.exists() && coreml_dir_path.is_dir() {
+                println!("ModelManager: Deleting Core ML encoder directory at: {:?}", coreml_dir_path);
+                fs::remove_dir_all(&coreml_dir_path)?;
+                println!("ModelManager: Core ML encoder directory deleted successfully");
+                deleted_something = true;
+            }
+
+            // Also delete any partial Core ML ZIP files
+            let coreml_zip_filename = format!("{}.zip", coreml_filename);
+            let coreml_partial_path = self.models_dir.join(format!("{}.partial", &coreml_zip_filename));
+            if coreml_partial_path.exists() {
+                println!("ModelManager: Deleting partial Core ML ZIP file at: {:?}", coreml_partial_path);
+                fs::remove_file(&coreml_partial_path)?;
+                println!("ModelManager: Partial Core ML ZIP file deleted successfully");
+                deleted_something = true;
+            }
         }
 
         if !deleted_something {

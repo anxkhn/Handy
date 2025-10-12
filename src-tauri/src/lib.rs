@@ -16,7 +16,7 @@ use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::image::Image;
+use tauri::{App, image::Image};
 
 use tauri::tray::TrayIconBuilder;
 use tauri::Emitter;
@@ -53,19 +53,21 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-fn initialize_core_logic(app_handle: &AppHandle) {
+fn initialize_core_logic(app: &App) {
+    let app_handle = app.handle().clone();
+    
     // First, initialize the managers
     let recording_manager = Arc::new(
-        AudioRecordingManager::new(app_handle).expect("Failed to initialize recording manager"),
+        AudioRecordingManager::new(&app_handle).expect("Failed to initialize recording manager"),
     );
     let model_manager =
-        Arc::new(ModelManager::new(app_handle).expect("Failed to initialize model manager"));
+        Arc::new(ModelManager::new(app).expect("Failed to initialize model manager"));
     let transcription_manager = Arc::new(
-        TranscriptionManager::new(app_handle, model_manager.clone())
+        TranscriptionManager::new(&app_handle, model_manager.clone())
             .expect("Failed to initialize transcription manager"),
     );
     let history_manager =
-        Arc::new(HistoryManager::new(app_handle).expect("Failed to initialize history manager"));
+        Arc::new(HistoryManager::new(&app_handle).expect("Failed to initialize history manager"));
 
     // Add managers to Tauri's managed state
     app_handle.manage(recording_manager.clone());
@@ -74,18 +76,18 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(history_manager.clone());
 
     // Initialize the shortcuts
-    shortcut::init_shortcuts(app_handle);
+    shortcut::init_shortcuts(&app_handle);
 
     // Apply macOS Accessory policy if starting hidden
     #[cfg(target_os = "macos")]
     {
-        let settings = settings::get_settings(app_handle);
+        let settings = settings::get_settings(&app_handle);
         if settings.start_hidden {
             let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
     }
     // Get the current theme to set the appropriate initial icon
-    let initial_theme = tray::get_current_theme(app_handle);
+    let initial_theme = tray::get_current_theme(&app_handle);
 
     // Choose the appropriate initial icon based on theme
     let initial_icon_path = tray::get_icon_path(initial_theme, tray::TrayIconState::Idle);
@@ -121,12 +123,12 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             }
             _ => {}
         })
-        .build(app_handle)
+        .build(&app_handle)
         .unwrap();
     app_handle.manage(tray);
 
     // Initialize tray menu with idle state
-    utils::update_tray_menu(app_handle, &utils::TrayIconState::Idle);
+    utils::update_tray_menu(&app_handle, &utils::TrayIconState::Idle);
 
     // Get the autostart manager and configure based on user setting
     let autostart_manager = app_handle.autolaunch();
@@ -141,7 +143,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     }
 
     // Create the recording overlay window (hidden by default)
-    utils::create_recording_overlay(app_handle);
+    utils::create_recording_overlay(&app_handle);
 }
 
 #[tauri::command]
@@ -185,7 +187,7 @@ pub fn run() {
             let settings = settings::get_settings(&app.handle());
             let app_handle = app.handle().clone();
 
-            initialize_core_logic(&app_handle);
+            initialize_core_logic(app);
 
             // Show main window only if not starting hidden
             if !settings.start_hidden {
