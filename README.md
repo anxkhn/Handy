@@ -1,8 +1,32 @@
-# Handy
+# Handy (Apple Silicon Optimized Fork)
 
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
 
-**A free, open source, and extensible speech-to-text application that works completely offline.**
+**A fork of Handy, extensible speech-to-text app, optimized for Apple Silicon.**
+
+This fork enhances the original [Handy](https://github.com/cjpais/Handy) with Apple Silicon optimizations and Core ML acceleration for faster, more efficient speech transcription on macOS.
+
+## Key Changes in This Fork
+
+### Apple Silicon Optimizations
+
+- **Core ML Encoder Support**: Automatically downloads and uses Core ML encoders for Whisper models on Apple Silicon Macs
+- **Enhanced Performance**: Significantly faster transcription when Core ML acceleration is detected
+- **Automatic Detection**: Seamlessly falls back to standard processing on Intel Macs or when Core ML is unavailable
+
+### Improved User Experience
+
+- **Default Model**: Changed from "small" to "tiny" model for faster onboarding and testing
+- **Faster Downloads**: Smaller default model means quicker initial setup
+- **Better Performance**: Core ML acceleration provides near real-time transcription on Apple Silicon
+
+### Technical Improvements
+
+- **Automatic Core ML Download**: Core ML encoders are automatically downloaded alongside Whisper models
+- **Enhanced Model Management**: Better handling of Core ML encoder files and extraction
+- **Optimized Dependencies**: Updated to latest compatible versions with Apple Silicon support
+
+**Note**: Due to Apple's Core ML restrictions, this fork requires macOS 10.15 or later.
 
 Handy is a cross-platform desktop application built with Tauri (Rust + React/TypeScript) that provides simple, privacy-focused speech transcription. Press a shortcut, speak, and have your words appear in any text field—all without sending your voice to the cloud.
 
@@ -25,9 +49,13 @@ Handy isn't trying to be the best speech-to-text app—it's trying to be the mos
 4. **Get** your transcribed text pasted directly into whatever app you're using
 
 The process is entirely local:
+
 - Silence is filtered using VAD (Voice Activity Detection) with Silero
 - Transcription uses your choice of models:
-  - **Whisper models** (Small/Medium/Turbo/Large) with GPU acceleration when available
+  - **Whisper models** (Tiny/Base/Small/Medium) with GPU acceleration when available
+    - **Tiny** (default) - Fastest model, perfect for testing and quick transcriptions
+    - **Base/Small/Medium** - Higher accuracy models for more precise results
+    - **Core ML Acceleration** (macOS Apple Silicon) - Automatically downloads and uses Core ML encoders for faster processing
   - **Parakeet V3** - CPU-optimized model with excellent performance and automatic language detection
 - Works on Windows, macOS, and Linux
 
@@ -62,6 +90,7 @@ Handy is built as a Tauri application combining:
 ### Debug Mode
 
 Handy includes an advanced debug mode for development and troubleshooting. Access it by pressing:
+
 - **macOS**: `Cmd+Shift+D`
 - **Windows/Linux**: `Ctrl+Shift+D`
 
@@ -70,7 +99,8 @@ Handy includes an advanced debug mode for development and troubleshooting. Acces
 This project is actively being developed and has some [known issues](https://github.com/cjpais/Handy/issues). We believe in transparency about the current state:
 
 ### Platform Support
-- **macOS (both Intel and Apple Silicon)**
+
+- **macOS 10.15+ (both Intel and Apple Silicon, optimized for Apple Silicon)**
 - **x64 Windows**
 - **x64 Linux**
 
@@ -79,12 +109,16 @@ This project is actively being developed and has some [known issues](https://git
 The following are recommendations for running Handy on your own machine. If you don't meet the system requirements, the performance of the application may be degraded. We are working on improving the performance across all kinds of computers and hardware.
 
 **For Whisper Models:**
-- **macOS**: M series Mac, Intel Mac
+
+- **macOS**: M series Mac (with Core ML acceleration), Intel Mac
+  - **Apple Silicon**: Automatic Core ML encoder download and acceleration for faster performance
+  - **Intel Macs**: Standard processing with GPU acceleration when available
 - **Windows**: Intel, AMD, or NVIDIA GPU
 - **Linux**: Intel, AMD, or NVIDIA GPU
-  * Ubuntu 22.04, 24.04
+  - Ubuntu 22.04, 24.04
 
 **For Parakeet V3 Model:**
+
 - **CPU-only operation** - runs on a wide variety of hardware
 - **Minimum**: Intel Skylake (6th gen) or equivalent AMD processors
 - **Performance**: ~5x real-time speed on mid-range hardware (tested on i5)
@@ -133,4 +167,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-*"Your search for the right speech-to-text tool can end here—not because Handy is perfect, but because you can make it perfect for you."*
+_"Your search for the right speech-to-text tool can end here—not because Handy is perfect, but because you can make it perfect for you."_
